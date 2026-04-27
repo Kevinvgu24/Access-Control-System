@@ -1,0 +1,33 @@
+1. Core & Control
+
+    main.py: The entry point that parses model paths and launches the application.
+
+    app.py: The system "brain" that initializes hardware, manages the npu_lock for resource sharing, and runs the main recognition loop.
+
+2. Vision & AI Engine
+
+    face_engine.py: Handles NPU-based face embedding extraction, uses LBF for face alignment (Warp Affine) to boost accuracy, and tracks faces to smooth results.
+
+    camera.py: Manages a GStreamer video thread to ensure lag-free frames while AI processes data.
+
+3. Data & Syncing
+
+    database.py: Manages the SQLite database, converting face vectors into BLOB format for storage.
+
+    auto_sync_service.py: A background daemon that automatically updates the database when new images are added to the directory.
+
+    register.py: A legacy script for manual database creation.
+
+4. UI & Utilities
+
+    ui_drawer.py: Draws bounding boxes, names, and data onto the video feed.
+
+    utils.py: Performs cosine similarity calculations and converts scores into percentages.
+
+5. Hardware & Support
+
+    hardware.py: Monitors CPU and NPU temperatures in real-time.
+
+    common.py: Manages the Hailo inference engine, handles "letterbox" image padding to prevent distortion, and decodes raw YOLO outputs into coordinates.
+
+    lbfmodel.yaml: Contains weights for identifying 68 facial landmarks, enabling the system to "straighten" angled faces for more accurate recognition.

@@ -1,0 +1,22 @@
+#!/bin/bash
+
+# 1. Kích hoạt môi trường
+source /home/kevinvgu/hailo_env/bin/activate
+export PYTHONPATH="/home/kevinvgu/hailo_env/lib/python3.13/site-packages:/usr/lib/python3/dist-packages"
+
+# (Tùy chọn) Bật dịch vụ chia sẻ NPU
+export HAILORT_USE_SERVICE=1
+
+# 2. Chuyển vào thư mục code
+cd /home/kevinvgu/smart_lab/src/Newest_Version/
+
+# 3. Khởi chạy hệ thống toàn diện (Bao gồm cả ngầm và hiển thị)
+echo "========================================================="
+echo " KHỞI ĐỘNG SMART LAB DOOR - ĐA LUỒNG (THREADING CỐT LÕI)"
+echo "========================================================="
+
+python3 main.py \
+--yolo_hef /home/kevinvgu/smart_lab/models/yolo26n.hef \
+--arcface_hef /home/kevinvgu/smart_lab/models/arcface_mobilefacenet.hef \
+--db_dir /home/kevinvgu/smart_lab/database \
+--lbf_model /home/kevinvgu/smart_lab/src/Newest_Version/lbfmodel.yaml

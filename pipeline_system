@@ -1,0 +1,28 @@
+[BẮT ĐẦU: main.py] 
+       |
+       v
+[KHỞI TẠO: app.py] ---> (Tạo NPU Lock, Load Models, Connect SQLite)
+       |
+       +-------------------------------------------------------------+
+       |                                                             |
+[THREAD 1: LUỒNG ĐỒNG BỘ NGẦM]                               [THREAD 2: LUỒNG CAMERA & AI CHÍNH]
+(auto_sync_service.py)                                       (app.py - vòng lặp run)
+       |                                                             |
+       v                                                             v
+1. Quét thư mục ảnh mỗi 1 giây.                              1. Nhận Frame từ camera.py.
+2. NẾU phát hiện ảnh người mới:                              2. YÊU CẦU NPU LOCK (Chờ nếu Sync đang dùng).
+   -> YÊU CẦU NPU LOCK (Chờ nếu Camera đang dùng)            3. CHẠY YOLO: Cắt khuôn mặt.
+   -> Chạy YOLO cắt mặt.                                     4. ĐƯA VÀO FACE_ENGINE:
+   -> Chạy FaceAligner nắn mặt.                                 -> LBF nắn mặt.
+   -> Chạy ArcFace lấy Vector.                                  -> Yêu cầu NPU: lấy Vector 512D.
+   -> Lưu vào database.py (SQLite).                          5. TRẢ NPU LOCK.
+   -> TRẢ NPU LOCK.                                          6. ĐƯA VÀO FACETRACKER:
+   -> Vẫy cờ `db_updated_flag = True`.                          -> Làm mượt vector với các frame trước.
+       |                                                     7. SO SÁNH (utils.py):
+       |                                                        -> Cosine Similarity với Database trên RAM.
+       +------------------- Báo hiệu ----------------------> 8. NẾU CÓ CỜ TỪ SYNC THREAD:
+                                                                -> Tải lại Database từ SQLite ngay lập tức.
+                                                             9. GỌI ui_drawer.py: 
+                                                                -> Vẽ Box (Xanh/Đỏ), hiện FPS, Nhiệt độ.
+                                                             10. HIỂN THỊ LÊN MÀN HÌNH.
+                                                                -> Lặp lại vòng lặp.
