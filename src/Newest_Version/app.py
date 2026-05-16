@@ -92,10 +92,12 @@ class ProfessionalSmartDoor:
                             sim = calculate_cosine_similarity(db_emb, smoothed_emb)
                             if sim > best_sim: best_sim, best_name = sim, db_name
                                 
+                        is_recognized = best_sim > self.rec_thresh
+                        display_name = best_name if is_recognized else "Unknown"
                         conf = cosine_to_percentage(best_sim, self.rec_thresh)
-                        color = (0, 255, 0) if best_sim > self.rec_thresh else (0, 0, 255)
+                        color = (0, 255, 0) if is_recognized else (0, 0, 255)
                         
-                        UIDrawer.draw_bounding_box(frame, xmin, ymin, xmax, ymax, f"{best_name} ({conf:.1f}%)", color)
+                        UIDrawer.draw_bounding_box(frame, xmin, ymin, xmax, ymax, f"{display_name} ({conf:.1f}%)", color)
 
                 self.tracker.cleanup_lost_tracks()
                 t_end = time.perf_counter()
@@ -109,6 +111,7 @@ class ProfessionalSmartDoor:
                 cv2.imshow("Smart Lab Door", frame)
                 if cv2.waitKey(1) & 0xFF == ord('q'): break
         finally:
+            self.sync_manager.stop()
             stream.stop()
             self.hw_monitor.stop()
             cv2.destroyAllWindows()

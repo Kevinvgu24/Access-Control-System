@@ -1,4 +1,4 @@
-"""Common utilities for Hailo-8L inference on YOLO26 (NMS-free dual-head model)"""
+"""Common utilities for Hailo-8L inference on YOLO26."""
 
 import numpy as np
 import cv2
@@ -11,6 +11,45 @@ from hailo_platform import VDevice, HEF, ConfigureParams, InputVStreamParams, Ou
 def sigmoid(x: np.ndarray) -> np.ndarray:
     """Vectorized sigmoid function for activation."""
     return 1.0 / (1.0 + np.exp(-x))
+
+
+def bbox_iou(box_a: dict, box_b: dict) -> float:
+    """Calculate IoU for two detection dictionaries."""
+    x1 = max(box_a['x1'], box_b['x1'])
+    y1 = max(box_a['y1'], box_b['y1'])
+    x2 = min(box_a['x2'], box_b['x2'])
+    y2 = min(box_a['y2'], box_b['y2'])
+
+    inter_w = max(0.0, x2 - x1)
+    inter_h = max(0.0, y2 - y1)
+    inter_area = inter_w * inter_h
+
+    area_a = max(0.0, box_a['x2'] - box_a['x1']) * max(0.0, box_a['y2'] - box_a['y1'])
+    area_b = max(0.0, box_b['x2'] - box_b['x1']) * max(0.0, box_b['y2'] - box_b['y1'])
+    union_area = area_a + area_b - inter_area
+
+    if union_area <= 0:
+        return 0.0
+    return inter_area / union_area
+
+
+def non_max_suppression(detections: List[dict], iou_threshold: float = 0.45) -> List[dict]:
+    """Remove overlapping detections class-wise using Non-Maximum Suppression."""
+    if not detections:
+        return []
+
+    remaining = sorted(detections, key=lambda det: det['conf'], reverse=True)
+    selected = []
+
+    while remaining:
+        best = remaining.pop(0)
+        selected.append(best)
+        remaining = [
+            det for det in remaining
+            if det.get('cls_id') != best.get('cls_id') or bbox_iou(best, det) < iou_threshold
+        ]
+
+    return selected
 
 
 # ============================================================================
@@ -248,7 +287,7 @@ class HailoPythonInferenceEngine:
                     'cls_name': classes_map.get(int(cls[j]), 'N/A')
                 })
         
-        return results
+        return non_max_suppression(results, iou_threshold=0.45)
     
     def infer(self, input_data: np.ndarray, verbose: bool = False, save_output: bool = False, conf_threshold: float = 0.5, task: str = 'detection'):
         """Run the complete hybrid inference pipeline."""

@@ -34,6 +34,12 @@ class FaceDatabase:
                 embedding array
             )
         ''')
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS user_sync_state (
+                name TEXT PRIMARY KEY,
+                image_signature TEXT NOT NULL
+            )
+        ''')
         conn.commit()
         conn.close()
 
@@ -55,12 +61,35 @@ class FaceDatabase:
         c = conn.cursor()
         try:
             c.execute("DELETE FROM users WHERE name = ?", (name,))
+            c.execute("DELETE FROM user_sync_state WHERE name = ?", (name,))
             conn.commit()
             print(f"[DATABASE] Đã xóa vĩnh viễn hồ sơ: {name}")
         except Exception as e:
             print(f"[DATABASE] Lỗi khi xóa {name}: {e}")
         finally:
             conn.close()
+
+    def save_sync_signature(self, name, image_signature):
+        conn = sqlite3.connect(self.db_path, detect_types=sqlite3.PARSE_DECLTYPES)
+        c = conn.cursor()
+        try:
+            c.execute(
+                "REPLACE INTO user_sync_state (name, image_signature) VALUES (?, ?)",
+                (name, image_signature),
+            )
+            conn.commit()
+        except Exception as e:
+            print(f"[DATABASE] Loi khi luu sync state {name}: {e}")
+        finally:
+            conn.close()
+
+    def load_sync_signatures(self):
+        conn = sqlite3.connect(self.db_path, detect_types=sqlite3.PARSE_DECLTYPES)
+        c = conn.cursor()
+        c.execute("SELECT name, image_signature FROM user_sync_state")
+        rows = c.fetchall()
+        conn.close()
+        return {row[0]: row[1] for row in rows}
 
     def load_all_users(self):
         conn = sqlite3.connect(self.db_path, detect_types=sqlite3.PARSE_DECLTYPES)
