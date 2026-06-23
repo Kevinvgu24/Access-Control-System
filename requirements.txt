@@ -1,0 +1,12 @@
+opencv-python>=4.8.0
+numpy>=1.24.0
+paho-mqtt>=1.6.0
+Hailo Platform (PyHailoRT) from Hailo_software
+MQTT Broker
+Hệ thống cần 3 file trọng số (Weights) được đặt đúng đường dẫn tĩnh:
+
+    Mô hình Phát hiện (Detection): yolo26n.hef (đã biên dịch cho Hailo-8L).
+
+    Mô hình Nhận diện (Recognition): arcface_mobilefacenet.hef (đã biên dịch cho Hailo-8L).
+
+    Mô hình Hình thái (Alignment): lbfmodel.yaml (dùng cho OpenCV Facemark LBF).

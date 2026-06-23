@@ -1,0 +1,7 @@
+{
+    "iou_threshold": 0.45,
+    "score_threshold": 0.5,
+    "labels": [
+        "face"
+    ]
+}

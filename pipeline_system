@@ -1,0 +1,42 @@
+===================================================================
+ SMART LAB DOOR - PIPELINE SYSTEM ARCHITECTURE & THREADING FLOW
+===================================================================
+
+[START: main.py]
+       |
+       v
+[INITIALIZE: app.py] 
+  1. Load Face database from SQLite (smart_door.db)
+  2. Sync user names and 512-dim embeddings to binary cache (scratch/db.bin)
+  3. Start GStreamer pipeline thread & UI / Event loops
+       |
+       +---------------------------------------------------------------+
+       |                                                               |
+[THREAD 1: AUTO RE-SYNC / RELOAD]                         [THREAD 2: LIVE GSTREAMER NPU PIPELINE]
+(Runs in background in Python)                             (Driven by GStreamer C-Core & NPU)
+       |                                                               |
+       v                                                               v
+1. Monitor SQLite database mtime.                          1. Read camera frame (v4l2src).
+2. On change, reload known users in Python.                2. Run YOLOv8-Face (yolo26_landmark.hef).
+3. Re-serialize embeddings to binary (db.bin).             3. Run YOLO Post-proc (libyolo26_landmark_post.so).
+4. Signal C++ DB Matcher to hot-reload db.bin.            4. Run Box Tracking (hailotracker).
+                                                           5. Crop face ROIs (hailocropper / all_detections).
+                                                           6. Run Face embedding (arcface_mobilefacenet.hef).
+                                                           7. Extract 512-dim embedding (libarcface_post.so).
+                                                           8. Sync crops back to main frame (hailoaggregator).
+                                                           9. Run C++ DB matcher (libdb_matcher_post.so)
+                                                              - Match embedding using vector dot products.
+                                                              - Attach recognition classification metadata.
+                                                              - Remove matrix to prevent tracker propagation.
+                                                          10. Send frame to output (fakesink).
+                                                              |
+                                                              v
+                                                   [PYTHON PAD PROBE (fakesink)]
+                                                      - Maps GStreamer buffer via ctypes.
+                                                      - Wraps buffer in a zero-copy numpy array.
+                                                      - Draws modern Sci-fi style overlays:
+                                                         * Green corner bounding boxes (Known)
+                                                         * Red corner bounding boxes (Unknown)
+                                                         * Face landmarks (magenta dots)
+                                                         * Name and similarity percent text
+                                                      - Pushes updates to controller / DB.

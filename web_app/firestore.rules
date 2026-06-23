@@ -1,0 +1,70 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function adminDoc() {
+      return get(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    function isActiveAdmin() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+        && adminDoc().data.status == "active";
+    }
+
+    function isSuperAdmin() {
+      return isActiveAdmin() && adminDoc().data.type == "super_admin";
+    }
+
+    function hasLabAccess(labId) {
+      return isSuperAdmin()
+        || (
+          isActiveAdmin()
+          && adminDoc().data.type == "lab_admin"
+          && exists(/databases/$(database)/documents/admins/$(request.auth.uid)/labAccess/$(labId))
+          && get(/databases/$(database)/documents/admins/$(request.auth.uid)/labAccess/$(labId)).data.status == "active"
+        );
+    }
+
+    match /admins/{adminUid} {
+      allow read: if request.auth != null && (request.auth.uid == adminUid || isSuperAdmin());
+      allow create, update, delete: if isSuperAdmin();
+    }
+
+    match /admins/{adminUid}/labAccess/{labId} {
+      allow read: if isSuperAdmin() || (isActiveAdmin() && request.auth.uid == adminUid);
+      allow create, update, delete: if isSuperAdmin();
+    }
+
+    match /labs/{labId} {
+      allow read, write: if hasLabAccess(labId);
+    }
+
+    match /labs/{labId}/{document=**} {
+      allow read, write: if hasLabAccess(labId);
+    }
+
+    match /users/{userId} {
+      allow read, write: if isActiveAdmin();
+    }
+
+    match /users/{userId}/{document=**} {
+      allow read, write: if isActiveAdmin();
+    }
+
+    match /identityIndex/{universityId} {
+      allow read, write: if isActiveAdmin();
+    }
+
+    match /globalAuditLogs/{auditLogId} {
+      allow read, write: if isSuperAdmin();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

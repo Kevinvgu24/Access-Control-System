@@ -1,0 +1,29 @@
+node_modules/
+sandbox/
+dist/
+.firebase/
+*.gz
+*.br
+__pycache__/
+*.pyc
+
+# AI models & Large weights
+models/*.hef
+src/Newest_Version/lbfmodel.yaml
+
+# Local databases & Cache files
+database/
+scratch/db.bin
+*.db
+
+# C++ Build outputs & Tappas binaries
+src/Native_Tappas_CPP/build/
+src/Native_Tappas_CPP/CMakeFiles/
+src/Native_Tappas_CPP/cmake_install.cmake
+src/Native_Tappas_CPP/CMakeCache.txt
+src/Native_Tappas_CPP/Makefile
+*.so
+
+# System Logs
+*.log
+hailort*
