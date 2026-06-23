@@ -1,0 +1,1 @@
+/usr/bin/c++ -fPIC  -O3 -fPIC -Wall -shared -Wl,--dependency-file=CMakeFiles/db_matcher_post.dir/link.d -shared -Wl,-soname,libdb_matcher_post.so -o libdb_matcher_post.so CMakeFiles/db_matcher_post.dir/db_matcher_post.cpp.o  -lgstreamer-1.0 -lgobject-2.0 -lglib-2.0
