@@ -6,8 +6,8 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 
 # Đường dẫn cấu hình
-DB_DIR = "/home/kevinvgu/Access-Control-System-main/database"
-SERVICE_ACCOUNT_PATH = "/home/kevinvgu/Access-Control-System-main/serviceAccountKey.json"
+DB_DIR = "/home/kevinvgu/Access-Control-System/database"
+SERVICE_ACCOUNT_PATH = "/home/kevinvgu/Access-Control-System/serviceAccountKey.json"
 
 def download_image(url, save_path):
     """Tải ảnh sinh trắc từ Storage / UploadThing về thư mục local"""
@@ -29,7 +29,7 @@ def sync_firestore():
         print(f"\n[LỖI] Không tìm thấy tệp cấu hình Firebase tại: {SERVICE_ACCOUNT_PATH}")
         print("Vui lòng tải tệp Service Account Key (dạng .json) từ Firebase Console:")
         print("Project Settings -> Service Accounts -> Generate New Private Key")
-        print(f"Và đặt tên là 'serviceAccountKey.json' tại thư mục: /home/kevinvgu/Access-Control-System-main/\n")
+        print(f"Và đặt tên là 'serviceAccountKey.json' tại thư mục: /home/kevinvgu/Access-Control-System/\n")
         return
 
     # Khởi tạo Firebase Admin SDK

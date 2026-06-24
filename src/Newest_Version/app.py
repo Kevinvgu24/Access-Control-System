@@ -1,6 +1,7 @@
 import time
 import os
 import sys
+os.environ["HAILORT_LOGGER_PATH"] = "NONE"
 import numpy as np
 import gc
 import cv2
@@ -80,6 +81,10 @@ class ProfessionalSmartDoor:
         self._frame_count = 0
         self._fps_start_time = time.time()
         self._fps = 0.0
+        self.recognition_callback = None
+        self.recognition_enabled = True
+        # [OPT] Cache appsink frame dimensions — caps.get_structure() mỗi frame là lãng phí
+        self._cached_appsink_size = None
 
     def _get_db_mtime(self):
         try:
@@ -105,7 +110,9 @@ class ProfessionalSmartDoor:
         [LIÊN KẾT] Tệp db.bin này sẽ được bộ so khớp C++ (libdb_matcher_post.so) đọc vào bộ nhớ 
                   ở tầng GStreamer để so khớp vector embedding với tốc độ cao bằng ngôn ngữ C++.
         """
-        bin_path = "/home/kevinvgu/Access-Control-System-main/scratch/db.bin"
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        workspace_dir = os.path.abspath(os.path.join(current_dir, "..", ".."))
+        bin_path = os.path.join(workspace_dir, "scratch", "db.bin")
         try:
             os.makedirs(os.path.dirname(bin_path), exist_ok=True)
             with open(bin_path, "wb") as f:
@@ -193,84 +200,94 @@ class ProfessionalSmartDoor:
 
         # [CHỨC NĂNG] Ánh xạ bộ nhớ đệm GStreamer thô bằng ctypes (Zero-Copy) để cho phép vẽ đè trong Python
         # [LIÊN KẾT] Khắc phục lỗi PyGObject cấm ghi đè vùng nhớ (ReadOnly), giúp OpenCV vẽ HUD trực tiếp cực nhanh
-        buf_ptr = hash(buffer)
-        map_info = GstMapInfo()
-        success = libgst.gst_buffer_map(buf_ptr, ctypes.byref(map_info), 1)
-        if success:
-            try:
-                # Ép kiểu dữ liệu sang con trỏ byte C và bọc thành mảng NumPy (Không nhân bản vùng nhớ)
-                data_ptr = ctypes.cast(map_info.data, ctypes.POINTER(ctypes.c_ubyte))
-                arr = np.ctypeslib.as_array(data_ptr, shape=(h, w, 3))
-                
-                for det in detections:
-                    bbox = det.get_bbox()
-                    xmin = bbox.xmin()
-                    ymin = bbox.ymin()
-                    w_box = bbox.width()
-                    h_box = bbox.height()
+        if getattr(self, "recognition_enabled", True):
+            buf_ptr = hash(buffer)
+            map_info = GstMapInfo()
+            success = libgst.gst_buffer_map(buf_ptr, ctypes.byref(map_info), 1)
+            if success:
+                try:
+                    # Ép kiểu dữ liệu sang con trỏ byte C và bọc thành mảng NumPy (Không nhân bản vùng nhớ)
+                    data_ptr = ctypes.cast(map_info.data, ctypes.POINTER(ctypes.c_ubyte))
+                    arr = np.ctypeslib.as_array(data_ptr, shape=(h, w, 3))
                     
-                    # Chuyển đổi tọa độ bbox từ tỉ lệ (%) sang pixel thực tế của khung hình
-                    x1 = int(xmin * w)
-                    y1 = int(ymin * h)
-                    x2 = int((xmin + w_box) * w)
-                    y2 = int((ymin + h_box) * h)
-                    
-                    # Giới hạn tọa độ trong biên khung hình tránh crash OpenCV
-                    x1 = max(0, min(x1, w - 1))
-                    y1 = max(0, min(y1, h - 1))
-                    x2 = max(0, min(x2, w - 1))
-                    y2 = max(0, min(y2, h - 1))
-                    
-                    # Lấy class_id từ C++ DB Matcher: 0 = Đã nhận diện (Xanh lá), 1 = Unknown (Đỏ)
-                    class_id = det.get_class_id()
-                    label = det.get_label()
-                    
-                    color = (0, 255, 0) if class_id == 0 else (0, 0, 255)
-                    
-                    # Vẽ góc Sci-Fi nổi bật (2 đoạn thẳng ngắn ở mỗi góc vuông của Bounding Box)
-                    length = int(min(x2 - x1, y2 - y1) * 0.18)
-                    length = max(10, min(length, 30))
-                    thickness = 3
-                    
-                    # Góc trên bên trái
-                    cv2.line(arr, (x1, y1), (x1 + length, y1), color, thickness)
-                    cv2.line(arr, (x1, y1), (x1, y1 + length), color, thickness)
-                    # Góc trên bên phải
-                    cv2.line(arr, (x2, y1), (x2 - length, y1), color, thickness)
-                    cv2.line(arr, (x2, y1), (x2, y1 + length), color, thickness)
-                    # Góc dưới bên trái
-                    cv2.line(arr, (x1, y2), (x1 + length, y2), color, thickness)
-                    cv2.line(arr, (x1, y2), (x1, y2 - length), color, thickness)
-                    # Góc dưới bên phải
-                    cv2.line(arr, (x2, y2), (x2 - length, y2), color, thickness)
-                    cv2.line(arr, (x2, y2), (x2, y2 - length), color, thickness)
-                    
-                    # [LIÊN KẾT] Đọc kết quả phân lớp "recognition" được đính kèm bởi db_matcher_post.cpp
-                    display_text = label
-                    for sub in det.get_objects():
-                        if isinstance(sub, hailo.HailoClassification):
-                            if sub.get_classification_type() == "recognition":
-                                display_text = sub.get_label()
-                                break
-                    
-                    # Vẽ nhãn tên kèm phần trăm tương đồng lên phía trên bounding box (có đổ bóng viền đen dễ nhìn)
-                    font = cv2.FONT_HERSHEY_SIMPLEX
-                    font_scale = 0.55
-                    text_thickness = 2
-                    cv2.putText(arr, display_text, (x1, y1 - 8), font, font_scale, (0, 0, 0), text_thickness + 2, cv2.LINE_AA)
-                    cv2.putText(arr, display_text, (x1, y1 - 8), font, font_scale, color, text_thickness, cv2.LINE_AA)
-                    
-                    # [LIÊN KẾT] Vẽ các điểm landmarks (5 điểm mốc) được sinh ra từ mô hình YOLOv8-Face
-                    for sub in det.get_objects():
-                        if isinstance(sub, hailo.HailoLandmarks):
-                            for pt in sub.get_points():
-                                px = int(x1 + pt.x() * (x2 - x1))
-                                py = int(y1 + pt.y() * (y2 - y1))
-                                px = max(0, min(px, w - 1))
-                                py = max(0, min(py, h - 1))
-                                cv2.circle(arr, (px, py), 3, (255, 0, 255), -1)
-            finally:
-                libgst.gst_buffer_unmap(buf_ptr, ctypes.byref(map_info))
+                    detections_info = []
+                    for det in detections:
+                        bbox = det.get_bbox()
+                        xmin = bbox.xmin()
+                        ymin = bbox.ymin()
+                        w_box = bbox.width()
+                        h_box = bbox.height()
+                        
+                        # Chuyển đổi tọa độ bbox từ tỉ lệ (%) sang pixel thực tế của khung hình
+                        x1 = int(xmin * w)
+                        y1 = int(ymin * h)
+                        x2 = int((xmin + w_box) * w)
+                        y2 = int((ymin + h_box) * h)
+                        
+                        # Giới hạn tọa độ trong biên khung hình tránh crash OpenCV
+                        x1 = max(0, min(x1, w - 1))
+                        y1 = max(0, min(y1, h - 1))
+                        x2 = max(0, min(x2, w - 1))
+                        y2 = max(0, min(y2, h - 1))
+                        
+                        # Lấy class_id từ C++ DB Matcher: 0 = Đã nhận diện (Xanh lá), 1 = Unknown (Đỏ)
+                        class_id = det.get_class_id()
+                        label = det.get_label()
+                        
+                        color = (0, 255, 0) if class_id == 0 else (0, 0, 255)
+                        
+                        # Vẽ góc Sci-Fi nổi bật (2 đoạn thẳng ngắn ở mỗi góc vuông của Bounding Box)
+                        length = int(min(x2 - x1, y2 - y1) * 0.18)
+                        length = max(10, min(length, 30))
+                        thickness = 3
+                        
+                        # Góc trên bên trái
+                        cv2.line(arr, (x1, y1), (x1 + length, y1), color, thickness)
+                        cv2.line(arr, (x1, y1), (x1, y1 + length), color, thickness)
+                        # Góc trên bên phải
+                        cv2.line(arr, (x2, y1), (x2 - length, y1), color, thickness)
+                        cv2.line(arr, (x2, y1), (x2, y1 + length), color, thickness)
+                        # Góc dưới bên trái
+                        cv2.line(arr, (x1, y2), (x1 + length, y2), color, thickness)
+                        cv2.line(arr, (x1, y2), (x1, y2 - length), color, thickness)
+                        # Góc dưới bên phải
+                        cv2.line(arr, (x2, y2), (x2 - length, y2), color, thickness)
+                        cv2.line(arr, (x2, y2), (x2, y2 - length), color, thickness)
+                        
+                        # [LIÊN KẾT] Đọc kết quả phân lớp "recognition" được đính kèm bởi db_matcher_post.cpp
+                        display_text = label
+                        for sub in det.get_objects():
+                            if isinstance(sub, hailo.HailoClassification):
+                                if sub.get_classification_type() == "recognition":
+                                    display_text = sub.get_label()
+                                    break
+                        
+                        # Vẽ nhãn tên kèm phần trăm tương đồng lên phía trên bounding box (có đổ bóng viền đen dễ nhìn)
+                        font = cv2.FONT_HERSHEY_SIMPLEX
+                        font_scale = 0.55
+                        text_thickness = 2
+                        cv2.putText(arr, display_text, (x1, y1 - 8), font, font_scale, (0, 0, 0), text_thickness + 2, cv2.LINE_AA)
+                        cv2.putText(arr, display_text, (x1, y1 - 8), font, font_scale, color, text_thickness, cv2.LINE_AA)
+                        
+                        # [LIÊN KẾT] Vẽ các điểm landmarks (5 điểm mốc) được sinh ra từ mô hình YOLOv8-Face
+                        for sub in det.get_objects():
+                            if isinstance(sub, hailo.HailoLandmarks):
+                                for pt in sub.get_points():
+                                    px = int(x1 + pt.x() * (x2 - x1))
+                                    py = int(y1 + pt.y() * (y2 - y1))
+                                    px = max(0, min(px, w - 1))
+                                    py = max(0, min(py, h - 1))
+                                    cv2.circle(arr, (px, py), 3, (255, 0, 255), -1)
+                        
+                        detections_info.append({
+                            "class_id": class_id,
+                            "label": display_text
+                        })
+                        
+                    if len(detections_info) > 0 and self.recognition_callback is not None:
+                        self.recognition_callback(detections_info)
+                finally:
+                    libgst.gst_buffer_unmap(buf_ptr, ctypes.byref(map_info))
 
         return Gst.PadProbeReturn.OK
 
@@ -341,7 +358,39 @@ class ProfessionalSmartDoor:
 
         return Gst.PadProbeReturn.OK
 
-    def run(self, width=640, height=480, source="0", headless=False):
+    def on_new_appsink_sample(self, appsink, callback):
+        sample = appsink.emit("pull-sample")
+        if sample:
+            buffer = sample.get_buffer()
+
+            # [OPT] Cache (w, h) sau lần đọc đầu tiên — caps không thay đổi khi pipeline PLAYING
+            if self._cached_appsink_size is None:
+                caps = sample.get_caps()
+                if caps:
+                    structure = caps.get_structure(0)
+                    self._cached_appsink_size = (
+                        structure.get_int("width")[1],
+                        structure.get_int("height")[1]
+                    )
+                else:
+                    self._cached_appsink_size = (640, 640)
+            w, h = self._cached_appsink_size
+
+            buf_ptr = hash(buffer)
+            map_info = GstMapInfo()
+            success = libgst.gst_buffer_map(buf_ptr, ctypes.byref(map_info), 1)
+            if success:
+                try:
+                    data_ptr = ctypes.cast(map_info.data, ctypes.POINTER(ctypes.c_ubyte))
+                    arr = np.ctypeslib.as_array(data_ptr, shape=(h, w, 3))
+                    callback(arr.copy())
+                except Exception as e:
+                    print(f"[ERROR] Appsink frame mapping failed: {e}")
+                finally:
+                    libgst.gst_buffer_unmap(buf_ptr, ctypes.byref(map_info))
+        return Gst.FlowReturn.OK
+
+    def run(self, width=640, height=480, source="0", headless=False, appsink_callback=None):
         Gst.init(None)
 
         # Determine source type and build the source string directly
@@ -371,7 +420,9 @@ class ProfessionalSmartDoor:
         # Sink configuration
         use_headless = headless or "DISPLAY" not in os.environ
         sync_val = "false" if is_live else "true"
-        if use_headless:
+        if appsink_callback is not None:
+            display_str = f"videoconvert n-threads=2 ! video/x-raw, format=RGB ! appsink name=appsink sync={sync_val} emit-signals=true max-buffers=1 drop=true"
+        elif use_headless:
             display_str = f"fakesink sync={sync_val} name=sink"
         else:
             display_str = f"videoconvert n-threads=2 ! autovideosink sync={sync_val} name=sink"
@@ -486,6 +537,14 @@ class ProfessionalSmartDoor:
         else:
             print("[WARN] queue_align element not found")
 
+        if appsink_callback is not None:
+            appsink = self.pipeline.get_by_name("appsink")
+            if appsink:
+                appsink.connect("new-sample", self.on_new_appsink_sample, appsink_callback)
+                print("-> [GStreamer] Connected appsink new-sample callback.")
+            else:
+                print("[WARN] Could not find appsink element in pipeline.")
+
         ret = self.pipeline.set_state(Gst.State.PLAYING)
         if ret == Gst.StateChangeReturn.FAILURE:
             print("[ERROR] Failed to transition pipeline to PLAYING state.")
@@ -498,6 +557,10 @@ class ProfessionalSmartDoor:
                 print(f"Debug Info: {debug}")
                 print(f"=================================================\n")
             self.stop()
+
+        if appsink_callback is not None:
+            print("=== SYSTEM RUNNING IN GUI MODE (no GLib loop in this thread) ===")
+            return
 
         self.loop = GLib.MainLoop()
         print("=== SYSTEM RUNNING — press Ctrl+C to quit ===")

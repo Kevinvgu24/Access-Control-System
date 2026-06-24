@@ -91,6 +91,59 @@ def auto_sync_database(yolo_hef, arcface_hef, lbf_model_path, database_dir):
         else:
             print(f"[-] Bỏ qua '{user_name}': Không tìm thấy khuôn mặt hợp lệ.")
 
+def extract_single_face_embedding(img, yolo_hef, arcface_hef, lbf_model_path):
+    """
+    Trích xuất vector đặc trưng (embedding 512 chiều) từ một khung hình duy nhất trên thiết bị biên.
+    Trả về: (vector_numpy_array, anh_khuon_mat_da_can_chinh_RGB)
+    """
+    from hailo_platform import VDevice 
+    from common import HailoPythonInferenceEngine, letterbox_image, scale_detections_to_original
+    from face_engine import FaceAligner
+
+    shared_vdevice = VDevice()
+    yolo_engine = HailoPythonInferenceEngine(yolo_hef, target=shared_vdevice)
+    arcface_engine = HailoPythonInferenceEngine(arcface_hef, target=shared_vdevice)
+    aligner = FaceAligner(lbf_model_path)
+
+    orig_h, orig_w = img.shape[:2]
+    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    padded, scale, pad_w, pad_h = letterbox_image(img_rgb, target_size=640)
+
+    detections, _ = yolo_engine.infer(np.expand_dims(padded, axis=0).astype(np.uint8), verbose=False, conf_threshold=0.4)
+    if not detections:
+        return None, None
+
+    detections = scale_detections_to_original(detections, orig_h, orig_w, scale, pad_w, pad_h)
+    best_det = max(detections, key=lambda x: x['conf'])
+
+    ymin, xmin, ymax, xmax = int(best_det['y1']), int(best_det['x1']), int(best_det['y2']), int(best_det['x2'])
+    my, mx = int((ymax - ymin) * 0.1), int((xmax - xmin) * 0.1)
+
+    raw_face = img[max(0, ymin - my):min(orig_h, ymax + my), max(0, xmin - mx):min(orig_w, xmax + mx)]
+    if raw_face.size == 0:
+        return None, None
+
+    # Căn chỉnh khuôn mặt
+    if best_det.get('landmarks') and len(best_det['landmarks']) >= 5:
+        processed_face = aligner.align_with_landmarks(img, best_det['landmarks'])
+        if processed_face is None:
+            processed_face = aligner.align(raw_face)
+    else:
+        processed_face = aligner.align(raw_face)
+
+    if processed_face is None:
+        return None, None
+
+    # Trích xuất embedding
+    embedding = get_face_embedding(arcface_engine, processed_face)
+
+    # Giải phóng tài nguyên NPU để GStreamer có thể chạy lại
+    del yolo_engine
+    del arcface_engine
+    del shared_vdevice
+
+    return embedding, processed_face
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--yolo_hef", type=str, required=True)
