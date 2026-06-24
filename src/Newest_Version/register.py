@@ -69,8 +69,19 @@ def auto_sync_database(yolo_hef, arcface_hef, lbf_model_path, database_dir):
                 raw_face = img[max(0, ymin - my):min(orig_h, ymax + my), max(0, xmin - mx):min(orig_w, xmax + mx)]
                 if raw_face.size == 0: continue
                 
-                processed_face = aligner.align(raw_face)
+                # [CẬP NHẬT] Ưu tiên căn chỉnh bằng 5 điểm landmark của YOLO (giống live pipeline)
+                # để đảm bảo tính nhất quán giữa enrollment và recognition → tăng cosine similarity
+                # Fallback sang LBF model nếu YOLO không trả về đủ landmark
+                if best_det.get('landmarks') and len(best_det['landmarks']) >= 5:
+                    processed_face = aligner.align_with_landmarks(img, best_det['landmarks'])
+                    if processed_face is None:
+                        print(f"  [!] YOLO landmark align failed, falling back to LBF for {img_path}")
+                        processed_face = aligner.align(raw_face)
+                else:
+                    processed_face = aligner.align(raw_face)
+                
                 embeddings.append(get_face_embedding(arcface_engine, processed_face))
+
 
         if embeddings:
             avg_embedding = np.mean(embeddings, axis=0)

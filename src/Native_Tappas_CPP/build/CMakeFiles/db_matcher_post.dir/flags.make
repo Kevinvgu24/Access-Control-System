@@ -4,7 +4,7 @@
 # compile CXX with /usr/bin/c++
 CXX_DEFINES = -Ddb_matcher_post_EXPORTS
 
-CXX_INCLUDES = -I/usr/include/hailo -I/usr/include/hailo/tappas -I/usr/include/gstreamer-1.0 -I/usr/include/glib-2.0 -I/usr/lib/aarch64-linux-gnu/glib-2.0/include -I/usr/include/sysprof-6
+CXX_INCLUDES = -I/usr/include/hailo -I/usr/include/hailo/tappas -I/usr/include/gstreamer-1.0 -I/usr/include/glib-2.0 -I/usr/lib/aarch64-linux-gnu/glib-2.0/include -I/usr/include/sysprof-6 -I/usr/include/orc-0.4 -I/usr/include/opencv4
 
-CXX_FLAGS =  -O3 -fPIC -Wall -shared -std=gnu++14 -fPIC
+CXX_FLAGS =  -O3 -fPIC -Wall -shared -O3 -DNDEBUG -std=gnu++14 -fPIC
 

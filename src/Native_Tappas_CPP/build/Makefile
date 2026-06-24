@@ -57,10 +57,10 @@ RM = /usr/bin/cmake -E rm -f
 EQUALS = =
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = /home/kevinvgu/Access-Control-System-main/src/Native_Tappas_CPP
+CMAKE_SOURCE_DIR = /home/kevinvgu/Access-Control-System/src/Native_Tappas_CPP
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /home/kevinvgu/Access-Control-System-main/src/Native_Tappas_CPP/build
+CMAKE_BINARY_DIR = /home/kevinvgu/Access-Control-System/src/Native_Tappas_CPP/build
 
 #=============================================================================
 # Targets provided globally by CMake.
@@ -87,9 +87,9 @@ rebuild_cache/fast: rebuild_cache
 
 # The main all target
 all: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/kevinvgu/Access-Control-System-main/src/Native_Tappas_CPP/build/CMakeFiles /home/kevinvgu/Access-Control-System-main/src/Native_Tappas_CPP/build//CMakeFiles/progress.marks
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/kevinvgu/Access-Control-System/src/Native_Tappas_CPP/build/CMakeFiles /home/kevinvgu/Access-Control-System/src/Native_Tappas_CPP/build//CMakeFiles/progress.marks
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 all
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/kevinvgu/Access-Control-System-main/src/Native_Tappas_CPP/build/CMakeFiles 0
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/kevinvgu/Access-Control-System/src/Native_Tappas_CPP/build/CMakeFiles 0
 .PHONY : all
 
 # The main clean target
@@ -155,6 +155,19 @@ db_matcher_post/fast:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/db_matcher_post.dir/build.make CMakeFiles/db_matcher_post.dir/build
 .PHONY : db_matcher_post/fast
 
+#=============================================================================
+# Target rules for targets named face_align
+
+# Build rule for target.
+face_align: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 face_align
+.PHONY : face_align
+
+# fast build rule for target.
+face_align/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/face_align.dir/build.make CMakeFiles/face_align.dir/build
+.PHONY : face_align/fast
+
 arcface_post.o: arcface_post.cpp.o
 .PHONY : arcface_post.o
 
@@ -203,6 +216,30 @@ db_matcher_post.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/db_matcher_post.dir/build.make CMakeFiles/db_matcher_post.dir/db_matcher_post.cpp.s
 .PHONY : db_matcher_post.cpp.s
 
+face_align.o: face_align.cpp.o
+.PHONY : face_align.o
+
+# target to build an object file
+face_align.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/face_align.dir/build.make CMakeFiles/face_align.dir/face_align.cpp.o
+.PHONY : face_align.cpp.o
+
+face_align.i: face_align.cpp.i
+.PHONY : face_align.i
+
+# target to preprocess a source file
+face_align.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/face_align.dir/build.make CMakeFiles/face_align.dir/face_align.cpp.i
+.PHONY : face_align.cpp.i
+
+face_align.s: face_align.cpp.s
+.PHONY : face_align.s
+
+# target to generate assembly for a file
+face_align.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/face_align.dir/build.make CMakeFiles/face_align.dir/face_align.cpp.s
+.PHONY : face_align.cpp.s
+
 yolo26_landmark_post.o: yolo26_landmark_post.cpp.o
 .PHONY : yolo26_landmark_post.o
 
@@ -237,6 +274,7 @@ help:
 	@echo "... rebuild_cache"
 	@echo "... arcface_post"
 	@echo "... db_matcher_post"
+	@echo "... face_align"
 	@echo "... yolo26_landmark_post"
 	@echo "... arcface_post.o"
 	@echo "... arcface_post.i"
@@ -244,6 +282,9 @@ help:
 	@echo "... db_matcher_post.o"
 	@echo "... db_matcher_post.i"
 	@echo "... db_matcher_post.s"
+	@echo "... face_align.o"
+	@echo "... face_align.i"
+	@echo "... face_align.s"
 	@echo "... yolo26_landmark_post.o"
 	@echo "... yolo26_landmark_post.i"
 	@echo "... yolo26_landmark_post.s"

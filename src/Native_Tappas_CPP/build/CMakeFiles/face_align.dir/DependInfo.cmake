@@ -8,8 +8,8 @@ set(CMAKE_DEPENDS_LANGUAGES
 
 # The set of dependency files which are needed:
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
-  "/home/kevinvgu/Access-Control-System/src/Native_Tappas_CPP/arcface_post.cpp" "CMakeFiles/arcface_post.dir/arcface_post.cpp.o" "gcc" "CMakeFiles/arcface_post.dir/arcface_post.cpp.o.d"
-  "" "libarcface_post.so" "gcc" "CMakeFiles/arcface_post.dir/link.d"
+  "/home/kevinvgu/Access-Control-System/src/Native_Tappas_CPP/face_align.cpp" "CMakeFiles/face_align.dir/face_align.cpp.o" "gcc" "CMakeFiles/face_align.dir/face_align.cpp.o.d"
+  "" "libface_align.so" "gcc" "CMakeFiles/face_align.dir/link.d"
   )
 
 # Targets to which this target links which contain Fortran sources.

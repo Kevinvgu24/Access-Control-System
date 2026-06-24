@@ -1,1 +1,1 @@
-/usr/bin/c++ -fPIC  -O3 -fPIC -Wall -shared -Wl,--dependency-file=CMakeFiles/arcface_post.dir/link.d -shared -Wl,-soname,libarcface_post.so -o libarcface_post.so CMakeFiles/arcface_post.dir/arcface_post.cpp.o  -lgstreamer-1.0 -lgobject-2.0 -lglib-2.0
+/usr/bin/c++ -fPIC  -O3 -fPIC -Wall -shared -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/arcface_post.dir/link.d -shared -Wl,-soname,libarcface_post.so -o libarcface_post.so CMakeFiles/arcface_post.dir/arcface_post.cpp.o  -lgstreamer-1.0 -lgobject-2.0 -lglib-2.0

@@ -16,6 +16,16 @@ from utils import cosine_to_percentage
 from hardware import HardwareMonitor
 from database import FaceDatabase
 
+# [CĂN CHỈNH] Tọa độ 5 điểm tham chiếu chuẩn của ArcFace MobileFaceNet (112×112)
+# Thứ tự: mắt trái, mắt phải, mũi, miệng trái, miệng phải
+ARCFACE_REFERENCE_5PTS = np.array([
+    [38.2946, 51.6963],
+    [73.5318, 51.5014],
+    [56.0252, 71.7366],
+    [41.5493, 92.3655],
+    [70.7299, 92.2041]
+], dtype=np.float32)
+
 class GstMapInfo(ctypes.Structure):
     _fields_ = [
         ("memory", ctypes.c_void_p),
@@ -264,6 +274,73 @@ class ProfessionalSmartDoor:
 
         return Gst.PadProbeReturn.OK
 
+    def on_face_crop_probe(self, pad, info, user_data):
+        """
+        [CĂN CHỈNH KHUÔN MẶT] Python pad probe trên queue_align.src
+        Thực hiện Affine alignment bằng 5 điểm landmark YOLO trước khi ArcFace NPU
+        trích xuất embedding. Dùng ctypes để ghi trực tiếp vào buffer 112×112.
+        Fallback an toàn: nếu thiếu landmark hoặc ma trận không hợp lệ → giữ nguyên ảnh.
+        """
+        buffer = info.get_buffer()
+        if buffer is None:
+            return Gst.PadProbeReturn.OK
+
+        # Lấy HailoROI từ sub-buffer của hailocropper
+        try:
+            roi = hailo.get_roi_from_buffer(buffer)
+        except Exception:
+            return Gst.PadProbeReturn.OK
+
+        # Tìm HailoLandmarks trong metadata
+        landmarks_pts = None
+        for obj in roi.get_objects():
+            if isinstance(obj, hailo.HailoLandmarks):
+                pts = obj.get_points()
+                if len(pts) >= 5:
+                    landmarks_pts = [[pt.x(), pt.y()] for pt in pts[:5]]
+                break
+
+        if not landmarks_pts:
+            return Gst.PadProbeReturn.OK
+
+        # Map buffer với ctypes để ghi trực tiếp (giống on_new_frame_probe)
+        buf_ptr = hash(buffer)
+        map_info = GstMapInfo()
+        success = libgst.gst_buffer_map(buf_ptr, ctypes.byref(map_info), 1)
+        if not success:
+            return Gst.PadProbeReturn.OK
+
+        try:
+            data_ptr = ctypes.cast(map_info.data, ctypes.POINTER(ctypes.c_ubyte))
+            arr = np.ctypeslib.as_array(data_ptr, shape=(112, 112, 3))
+
+            # Scale landmark [0,1] → pixel trong không gian 112×112
+            src_pts = np.array(
+                [[pt[0] * 112.0, pt[1] * 112.0] for pt in landmarks_pts],
+                dtype=np.float32
+            )
+
+            M, _ = cv2.estimateAffinePartial2D(
+                src_pts, ARCFACE_REFERENCE_5PTS, method=cv2.LMEDS
+            )
+
+            if M is not None:
+                scale = np.sqrt(M[0, 0]**2 + M[0, 1]**2)
+                if 0.5 <= scale <= 2.0:
+                    aligned = cv2.warpAffine(
+                        arr.copy(), M, (112, 112),
+                        flags=cv2.INTER_LINEAR,
+                        borderMode=cv2.BORDER_CONSTANT,
+                        borderValue=(0, 0, 0)
+                    )
+                    np.copyto(arr, aligned)
+        except Exception:
+            pass  # Fallback: giữ nguyên ảnh thô
+        finally:
+            libgst.gst_buffer_unmap(buf_ptr, ctypes.byref(map_info))
+
+        return Gst.PadProbeReturn.OK
+
     def run(self, width=640, height=480, source="0", headless=False):
         Gst.init(None)
 
@@ -304,6 +381,8 @@ class ProfessionalSmartDoor:
         yolo_post_so = os.path.join(project_root, "src/Native_Tappas_CPP/build/libyolo26_landmark_post.so")
         arcface_post_so = os.path.join(project_root, "src/Native_Tappas_CPP/build/libarcface_post.so")
         db_matcher_post_so = os.path.join(project_root, "src/Native_Tappas_CPP/build/libdb_matcher_post.so")
+        # [MỚI] Filter căn chỉnh khuôn mặt bằng 5 điểm landmark của YOLO (Affine Partial 2D)
+        face_align_so = os.path.join(project_root, "src/Native_Tappas_CPP/build/libface_align.so")
         cropper_so = "/usr/lib/aarch64-linux-gnu/hailo/tappas/post_processes/cropping_algorithms/libdetection_croppers.so"
 
         # Định nghĩa Pipeline GStreamer kết nối phần cứng và phần mềm
@@ -350,18 +429,22 @@ class ProfessionalSmartDoor:
             # [NHÁNH NHẬN DIỆN]: Lấy ảnh khuôn mặt đã cắt từ src_1
             f"cropper.src_1 ! "
             f"queue name=queue_crop_path max-size-buffers=30 max-size-bytes=0 max-size-time=0 ! "
-            
+
             # Chuyển đổi định dạng kích thước chuẩn 112x112 RGB cho ArcFace
             f"video/x-raw, width=112, height=112, format=RGB ! "
-            
+
+            # [Python Probe] Căn chỉnh khuôn mặt sẽ được thực hiện bởi on_face_crop_probe
+            # đăng ký trên src pad của queue này (sau khi pipeline được khởi tạo)
+            f"queue name=queue_align max-size-buffers=30 max-size-bytes=0 max-size-time=0 ! "
+
             # [NPU] Chạy mô hình trích xuất đặc trưng ArcFace (512 chiều) trên NPU
             f"hailonet hef-path={self.arcface_hef} vdevice-group-id=smart_door ! "
             f"queue name=queue_arcface max-size-buffers=30 max-size-bytes=0 max-size-time=0 ! "
-            
+
             # [C++] Giải mã đặc trưng từ NPU sang đối tượng con HailoMatrix gắn vào khuôn mặt
             f"hailofilter so-path={arcface_post_so} ! "
             f"queue name=queue_filter2 max-size-buffers=30 max-size-bytes=0 max-size-time=0 ! "
-            
+
             # Đưa đặc trưng nhận diện về bộ gộp luồng agg để ráp nối lại với khung hình gốc
             f"agg.sink_1"
         )
@@ -389,6 +472,19 @@ class ProfessionalSmartDoor:
 
         pad = overlay.get_static_pad("sink")
         pad.add_probe(Gst.PadProbeType.BUFFER, self.on_new_frame_probe, None)
+
+        # [CĂN CHỈNH] Đăng ký probe trên queue_align src pad để căn chỉnh khuôn mặt
+        # trước khi ArcFace NPU xử lý embedding
+        align_queue = self.pipeline.get_by_name("queue_align")
+        if align_queue:
+            align_pad = align_queue.get_static_pad("src")
+            if align_pad:
+                align_pad.add_probe(Gst.PadProbeType.BUFFER, self.on_face_crop_probe, None)
+                print("-> [Face Aligner] Python probe registered on queue_align.src")
+            else:
+                print("[WARN] Could not get queue_align src pad")
+        else:
+            print("[WARN] queue_align element not found")
 
         ret = self.pipeline.set_state(Gst.State.PLAYING)
         if ret == Gst.StateChangeReturn.FAILURE:

@@ -8,7 +8,7 @@ export PYTHONPATH="/home/kevinvgu/hailo_env/lib/python3.13/site-packages:/usr/li
 export HAILORT_USE_SERVICE=1
 
 # 2. Chuyển vào thư mục code
-cd /home/kevinvgu/Access-Control-System-main/src/Newest_Version/
+cd /home/kevinvgu/Access-Control-System/src/Newest_Version/
 
 # 3. Khởi chạy hệ thống toàn diện (Bao gồm cả ngầm và hiển thị)
 echo "========================================================="
@@ -16,11 +16,11 @@ echo " KHỞI ĐỘNG SMART LAB DOOR - ĐA LUỒNG (THREADING CỐT LÕI)"
 echo "========================================================="
 
 python3 main.py \
---yolo_hef /home/kevinvgu/Access-Control-System-main/models/yolo26_landmark.hef \
---arcface_hef /home/kevinvgu/Access-Control-System-main/models/arcface_mobilefacenet.hef \
---anti_spoofing_hef /home/kevinvgu/Access-Control-System-main/models/mobilenet_v3.hef \
---db_dir /home/kevinvgu/Access-Control-System-main/database \
---lbf_model /home/kevinvgu/Access-Control-System-main/src/Newest_Version/lbfmodel.yaml \
+--yolo_hef /home/kevinvgu/Access-Control-System/models/yolo26_landmark.hef \
+--arcface_hef /home/kevinvgu/Access-Control-System/models/arcface_mobilefacenet.hef \
+--anti_spoofing_hef /home/kevinvgu/Access-Control-System/models/mobilenet_v3.hef \
+--db_dir /home/kevinvgu/Access-Control-System/database \
+--lbf_model /home/kevinvgu/Access-Control-System/src/Newest_Version/lbfmodel.yaml \
 --close_thresh 130 \
 --cam_width 1920 \
 --cam_height 1080
