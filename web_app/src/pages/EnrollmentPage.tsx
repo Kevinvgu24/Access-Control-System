@@ -123,7 +123,7 @@ export function EnrollmentPage() {
       <div>
         <p className="font-mono text-[11px] tracking-widest uppercase text-[#3d4a46] mb-3">Add New User</p>
         <h1 className="text-4xl font-bold tracking-tight text-[#e8ecea]">Enrollment Wizard</h1>
-        <p className="text-sm text-[#5a6b64] mt-2">Step-by-step to prevent biometric data errors at the door.</p>
+        <p className="text-sm text-[#5a6b64] mt-2">Capture photos and a PIN so the door recognizes them.</p>
       </div>
 
       {/* Stepper */}
