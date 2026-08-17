@@ -17,6 +17,82 @@ from utils import cosine_to_percentage
 from hardware import HardwareMonitor
 from database import FaceDatabase
 
+# Access log → Firestore (fail-safe, non-blocking). Config via ACS_* env vars.
+import threading
+try:
+    import firebase_admin
+    from firebase_admin import credentials, firestore as _fb_firestore
+except Exception:
+    firebase_admin = None
+    _fb_firestore = None
+
+ACS_SERVICE_ACCOUNT = os.environ.get(
+    "ACS_SERVICE_ACCOUNT",
+    "/home/kevinvgu/Access-Control-System/serviceAccountKey.json",
+)
+ACS_LAB_ID       = os.environ.get("ACS_LAB_ID", "")
+ACS_CLUSTER_ID   = os.environ.get("ACS_CLUSTER_ID", "")
+ACS_NODE_ID      = os.environ.get("ACS_NODE_ID", "")
+ACS_LOG_COOLDOWN = 10.0
+
+_fs_db       = None
+_last_logged = {}
+_log_lock    = threading.Lock()
+
+
+def _init_access_log():
+    global _fs_db
+    if _fs_db is not None:
+        return _fs_db
+    if firebase_admin is None or not ACS_LAB_ID:
+        return None
+    if not os.path.exists(ACS_SERVICE_ACCOUNT):
+        print(f"[access-log] skip: no service account at {ACS_SERVICE_ACCOUNT}")
+        return None
+    try:
+        if not firebase_admin._apps:
+            firebase_admin.initialize_app(credentials.Certificate(ACS_SERVICE_ACCOUNT))
+        _fs_db = _fb_firestore.client()
+    except Exception as e:
+        print(f"[access-log] init failed (skip): {e}")
+        _fs_db = None
+    return _fs_db
+
+
+def _write_access_event(name, class_id, confidence):
+    try:
+        client = _init_access_log()
+        if client is None:
+            return
+        client.collection("labs").document(ACS_LAB_ID) \
+            .collection("accessEvents").add({
+                "occurredAt":   _fb_firestore.SERVER_TIMESTAMP,
+                "displayName":  name if class_id == 0 else None,
+                "universityId": None,
+                "method":       "face",
+                "result":       "granted" if class_id == 0 else "denied",
+                "confidence":   float(confidence),
+                "reason":       "recognized" if class_id == 0 else "unknown_face",
+                "nodeId":       ACS_NODE_ID,
+                "clusterId":    ACS_CLUSTER_ID,
+            })
+    except Exception as e:
+        print(f"[access-log] write failed (skip): {e}")
+
+
+def log_access_event(name, class_id, confidence):
+    if firebase_admin is None or not ACS_LAB_ID:
+        return
+    key = name if class_id == 0 else "__unknown__"
+    now = time.time()
+    with _log_lock:
+        if now - _last_logged.get(key, 0.0) < ACS_LOG_COOLDOWN:
+            return
+        _last_logged[key] = now
+    threading.Thread(
+        target=_write_access_event, args=(name, class_id, confidence), daemon=True
+    ).start()
+
 # [CĂN CHỈNH] Tọa độ 5 điểm tham chiếu chuẩn của ArcFace MobileFaceNet (112×112)
 # Thứ tự: mắt trái, mắt phải, mũi, miệng trái, miệng phải
 ARCFACE_REFERENCE_5PTS = np.array([
@@ -256,12 +332,19 @@ class ProfessionalSmartDoor:
                         
                         # [LIÊN KẾT] Đọc kết quả phân lớp "recognition" được đính kèm bởi db_matcher_post.cpp
                         display_text = label
+                        rec_confidence = 0.0
                         for sub in det.get_objects():
                             if isinstance(sub, hailo.HailoClassification):
                                 if sub.get_classification_type() == "recognition":
                                     display_text = sub.get_label()
+                                    try:
+                                        rec_confidence = sub.get_confidence()
+                                    except Exception:
+                                        rec_confidence = 0.0
                                     break
-                        
+
+                        log_access_event(display_text, class_id, rec_confidence)
+
                         # Vẽ nhãn tên kèm phần trăm tương đồng lên phía trên bounding box (có đổ bóng viền đen dễ nhìn)
                         font = cv2.FONT_HERSHEY_SIMPLEX
                         font_scale = 0.55
