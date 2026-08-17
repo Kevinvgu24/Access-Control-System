@@ -100,7 +100,7 @@ export default function App() {
   return (
     <BrowserRouter>
       {user ? <AuthenticatedApp /> : <LoginPage />}
-      <MockPanel />
+      {import.meta.env.DEV && <MockPanel />}
     </BrowserRouter>
   )
 }
